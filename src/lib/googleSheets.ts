@@ -1,4 +1,9 @@
 export type SheetRow = Record<string, string | number | boolean | null>
+export type GvizCellValue = string | number | boolean | null
+export type GvizCell = { v: GvizCellValue; f?: string }
+export type GvizRow = { c: Array<GvizCell | null> }
+export type GvizCol = { label?: string }
+export type GvizTable = { cols: GvizCol[]; rows: GvizRow[] }
 
 function getRequiredEnv(name: string): string {
   const value = import.meta.env[name]
@@ -9,10 +14,7 @@ function getRequiredEnv(name: string): string {
 }
 
 type GvizResponse = {
-  table: {
-    cols: Array<{ label?: string }>
-    rows: Array<{ c: Array<{ v: string | number | boolean | null } | null> }>
-  }
+  table: GvizTable
 }
 
 function parseGoogleVisualizationResponse(rawText: string): GvizResponse {
@@ -56,4 +58,23 @@ export async function fetchGoogleSheetRows(): Promise<SheetRow[]> {
     })
     return entry
   })
+}
+
+export async function fetchGoogleSheetTableByGid(gid: string): Promise<GvizTable> {
+  const sheetId = getRequiredEnv('VITE_GOOGLE_SHEET_ID')
+  const query = import.meta.env.VITE_GOOGLE_SHEET_QUERY || 'select *'
+
+  const url =
+    `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq` +
+    `?gid=${encodeURIComponent(gid)}` +
+    `&tq=${encodeURIComponent(query)}` +
+    '&tqx=out:json'
+
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Google Sheets 요청 실패: ${response.status}`)
+  }
+
+  const text = await response.text()
+  return parseGoogleVisualizationResponse(text).table
 }

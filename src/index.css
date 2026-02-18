@@ -81,6 +81,12 @@ h1 {
   cursor: pointer;
 }
 
+.asLink {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 .refreshButton:hover {
   border-color: var(--accent);
 }
@@ -253,6 +259,21 @@ td {
 th {
   color: var(--accent-soft);
   font-weight: 600;
+}
+
+.unitLink {
+  color: var(--accent-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.unitLink:hover {
+  color: var(--accent);
+}
+
+.backLink {
+  color: var(--accent-soft);
+  text-decoration: underline;
 }
 
 .inlineDisclosure {
