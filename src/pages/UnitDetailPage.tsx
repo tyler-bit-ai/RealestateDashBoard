@@ -36,6 +36,64 @@ function cellToString(cell: GvizCell | null | undefined): string {
   return String(cell.v).trim()
 }
 
+function normalize(value: string): string {
+  return value.replace(/\s+/g, '').toLowerCase()
+}
+
+function findCellByKeyword(table: GvizTable, keyword: string): { row: number; col: number } | null {
+  const target = normalize(keyword)
+  const rows = table.rows ?? []
+  for (let r = 0; r < rows.length; r++) {
+    const cells = rows[r].c ?? []
+    for (let c = 0; c < cells.length; c++) {
+      if (normalize(cellToString(cells[c])).includes(target)) {
+        return { row: r, col: c }
+      }
+    }
+  }
+  return null
+}
+
+function getNumericAt(table: GvizTable, row: number, col: number): number | null {
+  const cell = table.rows?.[row]?.c?.[col] ?? null
+  const fromValue = toNumber(cell?.v as string | number | null)
+  if (fromValue !== null) return fromValue
+  return toNumber(cellToString(cell))
+}
+
+function getNumericBelow(
+  table: GvizTable,
+  anchor: { row: number; col: number },
+  maxDepth = 4,
+): number | null {
+  for (let offset = 1; offset <= maxDepth; offset++) {
+    const value = getNumericAt(table, anchor.row + offset, anchor.col)
+    if (value !== null) return value
+  }
+  return null
+}
+
+function getRegistrationHeuristic(
+  table: GvizTable,
+  anchor: { row: number; col: number } | null,
+): number | null {
+  if (!anchor) return null
+  const row = table.rows?.[anchor.row + 1]
+  const cells = row?.c ?? []
+  const numbers: number[] = []
+
+  for (let c = anchor.col; c < cells.length; c++) {
+    const value = toNumber(cells[c]?.v as string | number | null) ?? toNumber(cellToString(cells[c]))
+    if (value !== null) {
+      numbers.push(value)
+    }
+  }
+
+  if (numbers.length === 0) return null
+  if (numbers.length >= 3) return numbers[2]
+  return numbers[numbers.length - 1]
+}
+
 function toNumber(value: string | number | null): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
   if (typeof value !== 'string') return null
@@ -59,6 +117,29 @@ function parseDetail(table: GvizTable) {
   const rows = table.rows ?? []
   const getCell = (r: number, c: number) => rows[r]?.c?.[c] ?? null
 
+  const depositLabel = findCellByKeyword(table, '보증금')
+  const rentLabel = findCellByKeyword(table, '월세')
+  const rentPerPyeongLabel = findCellByKeyword(table, '평당월세')
+  const acquisitionTaxLabel = findCellByKeyword(table, '취등록세')
+  const registrationLabel = findCellByKeyword(table, '등기비용')
+
+  const leaseDeposit =
+    depositLabel !== null ? getNumericBelow(table, depositLabel) : toNumber(cellToString(getCell(8, 1)))
+  const monthlyRent =
+    rentLabel !== null
+      ? getNumericBelow(table, rentLabel)
+      : depositLabel !== null
+        ? getNumericAt(table, depositLabel.row + 1, depositLabel.col + 1)
+        : toNumber(cellToString(getCell(8, 2)))
+  const monthlyRentPerPyeong =
+    rentPerPyeongLabel !== null
+      ? getNumericBelow(table, rentPerPyeongLabel)
+      : rentLabel !== null
+        ? getNumericAt(table, rentLabel.row + 1, rentLabel.col + 1)
+        : depositLabel !== null
+          ? getNumericAt(table, depositLabel.row + 1, depositLabel.col + 2)
+          : null
+
   const scenarios: UnitScenario[] = rows
     .filter((row) => cellToString(row.c?.[1]).includes('%'))
     .map((row) => {
@@ -79,6 +160,11 @@ function parseDetail(table: GvizTable) {
       }
     })
 
+  const registrationFromAcquisitionTax =
+    acquisitionTaxLabel !== null ? getNumericBelow(table, acquisitionTaxLabel) : null
+  const registrationFromScenario = scenarios.length > 0 ? scenarios[0].fixedCost : null
+  const registrationFallback = getRegistrationHeuristic(table, registrationLabel)
+
   return {
     warningText: table.cols[1]?.label ?? '',
     building: {
@@ -97,11 +183,12 @@ function parseDetail(table: GvizTable) {
       interior: cellToString(getCell(5, 2)),
     },
     lease: {
-      deposit: toNumber(cellToString(getCell(8, 1))),
-      monthlyRent: toNumber(cellToString(getCell(8, 2))),
+      deposit: leaseDeposit,
+      monthlyRent,
+      monthlyRentPerPyeong,
     },
     otherCosts: {
-      registration: toNumber(cellToString(getCell(11, 1))),
+      registration: registrationFromAcquisitionTax ?? registrationFromScenario ?? registrationFallback,
       brokerage: toNumber(cellToString(getCell(11, 2))),
       propertyBuildingTax: toNumber(cellToString(getCell(12, 1))),
       propertyLandTax: toNumber(cellToString(getCell(12, 2))),
@@ -255,6 +342,10 @@ export default function UnitDetailPage() {
                 <p>
                   <span>월세</span>
                   <strong>{formatCurrency(parsed.lease.monthlyRent)}</strong>
+                </p>
+                <p>
+                  <span>평당 월세</span>
+                  <strong>{formatCurrency(parsed.lease.monthlyRentPerPyeong)}</strong>
                 </p>
                 <p>
                   <span>등기비용</span>
