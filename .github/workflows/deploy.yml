@@ -30,8 +30,21 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Validate env
+        run: |
+          if [ -z "${VITE_GOOGLE_SHEET_ID}" ]; then
+            echo "VITE_GOOGLE_SHEET_ID is missing."
+            exit 1
+          fi
+        env:
+          VITE_GOOGLE_SHEET_ID: ${{ vars.VITE_GOOGLE_SHEET_ID }}
+
       - name: Build
         run: npm run build
+        env:
+          VITE_GOOGLE_SHEET_ID: ${{ vars.VITE_GOOGLE_SHEET_ID }}
+          VITE_GOOGLE_SHEET_GID: ${{ vars.VITE_GOOGLE_SHEET_GID }}
+          VITE_GOOGLE_SHEET_QUERY: ${{ vars.VITE_GOOGLE_SHEET_QUERY }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
